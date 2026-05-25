@@ -1,0 +1,403 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  COMPANY_ADMIN
+  ENGINEER
+  CONTRACTOR
+  CONSULTANT
+  CLIENT
+  VIEWER
+}
+
+enum DesignLevel {
+  ECONOMY
+  STANDARD
+  PREMIUM
+  MISSION_CRITICAL
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  LOW
+  REVIEW_REQUIRED
+}
+
+enum ProjectStatus {
+  DRAFT
+  DESIGN_IN_PROGRESS
+  BOQ_READY
+  UNDER_REVIEW
+  APPROVED
+  IN_EXECUTION
+  HANDOVER
+  COMPLETED
+  ARCHIVED
+}
+
+enum SystemCategory {
+  LIGHTING
+  POWER
+  DATA
+  CCTV
+  WIFI
+  ACCESS_CONTROL
+  FIRE_ALARM
+  BMS
+  SERVER_ROOM
+  CABLE_CONTAINMENT
+  UPS
+  PUBLIC_ADDRESS
+  INTERCOM
+  OTHER
+}
+
+enum FileCategory {
+  FLOOR_PLAN_PDF
+  FLOOR_PLAN_IMAGE
+  BOQ_EXCEL
+  TECHNICAL_SPECIFICATION
+  CONTRACT
+  DRAWING
+  SITE_PHOTO
+  CONSULTANT_COMMENT
+  EMAIL_EXTRACT
+  HANDOVER_DOCUMENT
+  OM_MANUAL
+  WARRANTY_DOCUMENT
+  OTHER
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  NOT_REQUIRED
+}
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  name          String
+  passwordHash  String
+  role          Role          @default(ENGINEER)
+  companyId     String
+  company       Company       @relation(fields: [companyId], references: [id])
+  projects      Project[]     @relation("CreatedProjects")
+  auditLogs     AuditLog[]
+  messages      AIMessage[]
+  uploadedFiles ProjectFile[]
+  sitePhotos    SitePhoto[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Company {
+  id          String      @id @default(uuid())
+  name        String
+  logoUrl     String?
+  country     String      @default("Qatar")
+  users       User[]
+  workspaces  Workspace[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Workspace {
+  id          String    @id @default(uuid())
+  name        String
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id])
+  projects    Project[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Project {
+  id                 String              @id @default(uuid())
+  name               String
+  client             String
+  country            String              @default("Qatar")
+  city               String              @default("Doha")
+  location           String?
+  projectType        String              @default("Office")
+  areaSqm            Float
+  ceilingHeight      Float               @default(3.0)
+  designLevel        DesignLevel         @default(STANDARD)
+  status             ProjectStatus       @default(DRAFT)
+  workspaceId        String
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id])
+  createdById        String
+  createdBy          User                @relation("CreatedProjects", fields: [createdById], references: [id])
+  files              ProjectFile[]
+  rooms              Room[]
+  designRequirements DesignRequirement[]
+  powerRequirements  PowerRequirement[]
+  elvRequirements    ELVRequirement[]
+  boqItems           BOQItem[]
+  reports            Report[]
+  conversations      AIConversation[]
+  sitePhotos         SitePhoto[]
+  variationClaims    VariationClaim[]
+  assets             Asset[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model ProjectFile {
+  id               String           @id @default(uuid())
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedById     String
+  uploadedBy       User             @relation(fields: [uploadedById], references: [id])
+  fileName         String
+  originalName     String
+  mimeType         String
+  sizeBytes        Int
+  storagePath      String
+  category         FileCategory
+  processingStatus ProcessingStatus @default(PENDING)
+  extractedText    String?
+  embeddingStatus  ProcessingStatus @default(PENDING)
+  notes            String?
+  uploadedAt       DateTime         @default(now())
+}
+
+model Room {
+  id             String                @id @default(uuid())
+  projectId      String
+  project        Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name           String
+  type           String
+  area           Float
+  ceilingHeight  Float
+  occupancy      Int                   @default(1)
+  luxTarget      Int                   @default(400)
+  lightingPoints Int                   @default(0)
+  socketPoints   Int                   @default(0)
+  dataPoints     Int                   @default(0)
+  cctvPoints     Int                   @default(0)
+  wifiPoints     Int                   @default(0)
+  accessPoints   Int                   @default(0)
+  bmsSensors     Int                   @default(0)
+  notes          String?
+  calculations   LightingCalculation[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+}
+
+model DesignRequirement {
+  id              String         @id @default(uuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  systemCategory  SystemCategory
+  requirementText String
+  designLevel     DesignLevel
+  assumptionsJson String?
+  confidenceLevel Confidence     @default(MEDIUM)
+  createdAt       DateTime       @default(now())
+}
+
+model LightingCalculation {
+  id                String     @id @default(uuid())
+  roomId            String
+  room              Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  targetLux         Int
+  fixtureLumens     Float      @default(3200)
+  utilizationFactor Float      @default(0.6)
+  maintenanceFactor Float      @default(0.8)
+  fixtureWattage    Float?
+  calculatedQty     Int
+  estimatedWatts    Float?
+  fixtureType       String     @default("60x60 LED Panel")
+  confidenceLevel   Confidence @default(MEDIUM)
+  warningsJson      String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model PowerRequirement {
+  id                String     @id @default(uuid())
+  projectId         String
+  project           Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roomName          String
+  roomType          String
+  socketCount       Int
+  dedicatedCircuits Int        @default(0)
+  estimatedLoadKw   Float?
+  upsRequired       Boolean    @default(false)
+  notes             String?
+  confidenceLevel   Confidence @default(MEDIUM)
+  createdAt         DateTime   @default(now())
+}
+
+model ELVRequirement {
+  id              String     @id @default(uuid())
+  projectId       String
+  project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roomName        String
+  roomType        String
+  dataPoints      Int        @default(0)
+  wifiPoints      Int        @default(0)
+  cctvPoints      Int        @default(0)
+  accessPoints    Int        @default(0)
+  bmsSensors      Int        @default(0)
+  rackRequired    Boolean    @default(false)
+  notes           String?
+  confidenceLevel Confidence @default(MEDIUM)
+  createdAt       DateTime   @default(now())
+}
+
+model BOQItem {
+  id              String         @id @default(uuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category        SystemCategory
+  itemCode        String
+  description     String
+  unit            String
+  quantity        Float
+  unitRate        Float
+  total           Float
+  confidenceLevel Confidence     @default(MEDIUM)
+  source          String         @default("AI Estimate")
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  type        String
+  contentJson String
+  createdAt   DateTime @default(now())
+}
+
+model AIConversation {
+  id        String      @id @default(uuid())
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  messages  AIMessage[]
+  createdAt DateTime    @default(now())
+}
+
+model AIMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  userId         String?
+  user           User?          @relation(fields: [userId], references: [id])
+  createdAt      DateTime       @default(now())
+}
+
+model SitePhoto {
+  id           String              @id @default(uuid())
+  projectId    String
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedById String?
+  uploadedBy   User?               @relation(fields: [uploadedById], references: [id])
+  photoUrl     String
+  roomName     String?
+  systemType   SystemCategory?
+  findings     InspectionFinding[]
+  uploadedAt   DateTime            @default(now())
+}
+
+model InspectionFinding {
+  id          String    @id @default(uuid())
+  photoId     String
+  photo       SitePhoto @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  category    String
+  description String
+  status      String    @default("Open")
+  severity    String
+  createdAt   DateTime  @default(now())
+}
+
+model VariationClaim {
+  id             String   @id @default(uuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  estimatedValue Float
+  status         String   @default("Draft")
+  claimLetter    String   @default("")
+  evidenceJson   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Asset {
+  id                  String                @id @default(uuid())
+  projectId           String
+  project             Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                String
+  modelNumber         String?
+  serialNumber        String?
+  systemCategory      SystemCategory
+  location            String?
+  qrCode              String?
+  warranty            Warranty?
+  maintenanceSchedule MaintenanceSchedule[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+}
+
+model Warranty {
+  id             String   @id @default(uuid())
+  assetId        String   @unique
+  asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  startDate      DateTime
+  durationMonths Int
+  provider       String
+  documentUrl    String?
+}
+
+model MaintenanceSchedule {
+  id          String   @id @default(uuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  taskName    String
+  frequency   String
+  nextDueDate DateTime
+  notes       String?
+}
+
+model EngineeringTemplate {
+  id              String         @id @default(uuid())
+  systemType      SystemCategory
+  ruleName        String
+  assumptionsJson String
+  country         String         @default("Qatar")
+  projectType     String?
+  designLevel     DesignLevel?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   String
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
